@@ -142,7 +142,7 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
-    use crate::universal_rule::{UniversalRule, UniversalRuleFrontmatter}; // For creating test rule files
+    use crate::universal_rule::UniversalRuleFrontmatter; // For creating test rule files
 
     /// Helper function to set up a temporary rules directory with specified rule files for testing.
     ///
@@ -189,6 +189,7 @@ mod tests {
             rules_dir: rules_path,
             agent: AgentName::Cursor,
             output_dir: output_path.clone(),
+            no_gitignore: false,
         };
         
         // Simulate running main's logic for Cursor
@@ -236,6 +237,7 @@ mod tests {
             rules_dir: rules_path,
             agent: AgentName::Windsurf,
             output_dir: output_path.clone(),
+            no_gitignore: false,
         };
 
         let rules = discover_and_parse_rules(&cli.rules_dir)?;
@@ -267,6 +269,7 @@ mod tests {
             rules_dir: rules_path,
             agent: AgentName::Claude,
             output_dir: output_path.clone(),
+            no_gitignore: false,
         };
         
         let rules = discover_and_parse_rules(&cli.rules_dir)?;

@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command; // Used to get the binary path
 
 use assert_cmd::prelude::*; // Add methods on commands
