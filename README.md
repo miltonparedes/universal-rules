@@ -30,7 +30,7 @@ If you have the source code, you can also install the binary directly using `car
 cargo install --path .
 ```
 
-This command will compile the binary and install it into `~/.cargo/bin/`. By default, the binary will be named `rule_unifier_cli`. 
+This command will compile the binary and install it into `~/.cargo/bin/`. By default, the binary will be named `rule_unifier_cli`.
 *   If you want to use `urules` as the command name, you can rename the binary after installation (e.g., `mv ~/.cargo/bin/rule_unifier_cli ~/.cargo/bin/urules`).
 *   Alternatively, you can create an alias in your shell's configuration file (e.g., `alias urules='rule_unifier_cli'`).
 *   The `setup.sh` script also provides guidance on this.
@@ -107,7 +107,7 @@ Located in: `<rules-dir>/my_rust_best_practices.md` (e.g., `.rules/my_rust_best_
 description: Enforces Rust best practices for error handling and logging.
 globs: ["*.rs"]
 cursor_rule_type: "AutoAttached"
-apply_globally: false 
+apply_globally: false
 ---
 
 ## Error Handling Guidance

@@ -3,37 +3,58 @@
 # Exit immediately if a command exits with a non-zero status.
 set -e
 
+echo "=== Setting up Universal Rules Development Environment ==="
+
 echo "=== Installing Rust (if not already installed) ==="
 # Check if rustc is installed
 if command -v rustc &> /dev/null
 then
-    echo "Rust is already installed."
+    echo "✓ Rust is already installed."
+    rustc --version
 else
     echo "Rust is not found. Installing Rust..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     # Add cargo to PATH for the current session
     source "$HOME/.cargo/env" 
+    echo "✓ Rust installed successfully."
 fi
 
-echo "=== Building the project ==="
-cargo build --release
+echo ""
+echo "=== Installing Rust development tools ==="
+# Install useful development tools
+echo "Installing rustfmt (code formatter)..."
+rustup component add rustfmt
+
+echo "Installing clippy (linter)..."
+rustup component add clippy
+
+echo "Installing rust-src (for IDE support)..."
+rustup component add rust-src
 
 echo ""
-echo "=== Build complete ==="
-echo "The binary is located at target/release/rule_unifier_cli"
-echo ""
-echo "To make the 'rule_unifier_cli' command available system-wide,"
-echo "you can copy it to a directory in your system's PATH."
-echo "For example:"
-echo "  sudo cp target/release/rule_unifier_cli /usr/local/bin/urules"
-echo "or for a user-local installation (ensure ~/.local/bin is in your PATH):"
-echo "  mkdir -p ~/.local/bin"
-echo "  cp target/release/rule_unifier_cli ~/.local/bin/urules"
-echo ""
-echo "Alternatively, you can install the binary directly using cargo from the project root:"
-echo "  cargo install --path ."
-echo "This will install it to ~/.cargo/bin/ (ensure this directory is in your PATH)."
-echo "The binary will be named 'rule_unifier_cli'."
+echo "=== Installing development dependencies ==="
+# Build in debug mode to install dev dependencies
+echo "Building project in debug mode..."
+cargo build
 
 echo ""
-echo "Setup complete. You might need to restart your terminal or source your shell profile (e.g., source ~/.bashrc or source ~/.zshrc) for PATH changes to take effect."
+echo "=== Running tests to verify setup ==="
+cargo test
+
+echo ""
+echo "=== Development environment setup complete! ==="
+echo ""
+echo "Available development commands:"
+echo "  cargo build          - Build the project in debug mode"
+echo "  cargo build --release - Build optimized release version"
+echo "  cargo test           - Run all tests"
+echo "  cargo test -- --nocapture - Run tests with output"
+echo "  cargo clippy         - Run linter for code quality checks"
+echo "  cargo fmt            - Format code automatically"
+echo "  cargo run -- <args>  - Run the CLI tool with arguments"
+echo "  cargo doc --open     - Generate and open documentation"
+echo ""
+echo "For VS Code users, consider installing the 'rust-analyzer' extension."
+echo "For Vim/Neovim users, consider setting up rust-analyzer LSP."
+echo ""
+echo "Happy coding! 🦀"
