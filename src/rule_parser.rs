@@ -1,7 +1,7 @@
 // src/rule_parser.rs
 
 use std::fs;
-use std::path::{Path, PathBuf}; // PathBuf is not used directly here, but often useful with Path
+use std::path::Path; // PathBuf is not used directly here, but often useful with Path
 use walkdir::WalkDir;
 use serde_yaml;
 use anyhow::{Context, Result, anyhow};

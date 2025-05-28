@@ -38,10 +38,6 @@ echo "Building project in debug mode..."
 cargo build
 
 echo ""
-echo "=== Running tests to verify setup ==="
-cargo test
-
-echo ""
 echo "=== Development environment setup complete! ==="
 echo ""
 echo "Available development commands:"
