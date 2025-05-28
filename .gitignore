@@ -1,0 +1,5 @@
+# Ignore Rust build artifacts
+target/
+
+# Ignore VSCode specific files
+.vscode/
