@@ -1,8 +1,8 @@
 // src/gitignore_manager.rs
 
 use std::collections::HashSet;
-use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::fs::{self, File};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use anyhow::{Context, Result};
 
@@ -14,6 +14,61 @@ use crate::AgentName; // Corrected path assuming AgentName is pub in main.rs or 
 
 const GITIGNORE_HEADER: &str = "# Added by urules";
 const GITIGNORE_FOOTER: &str = "# End urules section"; // Optional: for more robust section management
+
+/// Holds parts of a .gitignore file split around the urules section
+struct GitignoreSections {
+    pre: String,
+    section: String,
+    post: String,
+    lines: HashSet<String>,
+    header_found: bool,
+}
+/// Parse the .gitignore file and return its sections
+
+fn parse_gitignore_sections(gitignore_path: &Path) -> Result<GitignoreSections> {
+    let mut result = GitignoreSections {
+        pre: String::new(),
+        section: String::new(),
+        post: String::new(),
+        lines: HashSet::new(),
+        header_found: false,
+    };
+    let mut in_section = false;
+
+    if gitignore_path.exists() {
+        let file = File::open(gitignore_path)
+            .with_context(|| format!("Failed to open .gitignore file at {:?}", gitignore_path))?;
+        let reader = BufReader::new(file);
+
+        for line_result in reader.lines() {
+            let line = line_result.with_context(|| "Failed to read line from .gitignore")?;
+
+            if line.trim() == GITIGNORE_HEADER {
+                in_section = true;
+                result.header_found = true;
+                continue;
+            } else if line.trim() == GITIGNORE_FOOTER && in_section {
+                in_section = false;
+                continue;
+            }
+
+            if result.header_found && in_section {
+                result.section.push_str(&line);
+                result.section.push('\n');
+                result.lines.insert(line.trim().to_string());
+            } else if !result.header_found {
+                result.pre.push_str(&line);
+                result.pre.push('\n');
+                result.lines.insert(line.trim().to_string());
+            } else {
+                result.post.push_str(&line);
+                result.post.push('\n');
+            }
+        }
+    }
+
+    Ok(result)
+}
 
 /// Updates the .gitignore file in the specified output directory to include
 /// patterns related to the generated agent files, unless they are already present
@@ -33,52 +88,12 @@ pub fn update_gitignore(output_dir: &Path, agent_name: &AgentName) -> Result<()>
     };
 
     let gitignore_path = output_dir.join(".gitignore");
-    let mut existing_lines = HashSet::new();
-    let mut pre_content = String::new(); // Content before urules section
-    let mut urules_section_content = String::new(); // Content within urules section
-    let mut post_content = String::new(); // Content after urules section
+    let sections = parse_gitignore_sections(&gitignore_path)?;
     
-    let mut in_urules_section = false;
-    let mut urules_header_found = false;
-
-    if gitignore_path.exists() {
-        let file = File::open(&gitignore_path)
-            .with_context(|| format!("Failed to open .gitignore file at {:?}", gitignore_path))?;
-        let reader = BufReader::new(file);
-
-        for line_result in reader.lines() {
-            let line = line_result.with_context(|| "Failed to read line from .gitignore")?;
-            
-            if line.trim() == GITIGNORE_HEADER {
-                in_urules_section = true;
-                urules_header_found = true;
-                // Don't add header to any specific part yet, reconstruct later
-                continue; 
-            } else if line.trim() == GITIGNORE_FOOTER && in_urules_section {
-                in_urules_section = false;
-                // Don't add footer to any specific part yet
-                continue;
-            }
-
-            if urules_header_found && in_urules_section { // Check urules_header_found to ensure we are after the header
-                urules_section_content.push_str(&line);
-                urules_section_content.push('\n');
-                existing_lines.insert(line.trim().to_string());
-            } else if !urules_header_found { // Content before our section (or if no section at all)
-                pre_content.push_str(&line);
-                pre_content.push('\n');
-                existing_lines.insert(line.trim().to_string()); // Also consider lines outside our section
-            } else { // Content after our section
-                post_content.push_str(&line);
-                post_content.push('\n');
-                // Do not add these to existing_lines for purposes of *our* section management
-            }
-        }
-    }
-    
-    // If urules_header_found is true, but we finished reading and in_urules_section is still true,
-    // it means there was no footer. All remaining content is part of our section.
-    // This case is implicitly handled as urules_section_content would contain everything after header.
+    // If the header was found but the footer was missing, all remaining lines
+    // are treated as part of the urules section. This is implicitly handled
+    // by `parse_gitignore_sections` which collects everything after the header
+    // when no footer is present.
 
     let mut final_new_patterns = Vec::new();
     for pattern_to_check in &patterns_to_add {
@@ -91,41 +106,50 @@ pub fn update_gitignore(output_dir: &Path, agent_name: &AgentName) -> Result<()>
             format!("/{}/", trimmed_pattern),
             trimmed_pattern.to_string(),
         ];
-        let is_present = variations.iter().any(|v| existing_lines.contains(v.trim()));
+        let is_present = variations
+            .iter()
+            .any(|v| sections.lines.contains(v.trim()));
 
         if !is_present {
             final_new_patterns.push(pattern_to_check.clone());
         }
     }
 
-    if !final_new_patterns.is_empty() || !urules_header_found {
+    if !final_new_patterns.is_empty() || !sections.header_found {
         // Rebuild .gitignore content
         let mut new_gitignore_content = String::new();
-        new_gitignore_content.push_str(&pre_content);
+        new_gitignore_content.push_str(&sections.pre);
 
         // Ensure there's a newline before our section if pre_content is not empty and doesn't end with one
-        if !pre_content.is_empty() && !pre_content.ends_with('\n') {
+        if !sections.pre.is_empty() && !sections.pre.ends_with('\n') {
             new_gitignore_content.push('\n');
         }
 
         new_gitignore_content.push_str(GITIGNORE_HEADER);
         new_gitignore_content.push('\n');
-        
+
         // Add existing lines from our old section (if any)
-        new_gitignore_content.push_str(&urules_section_content); 
+        new_gitignore_content.push_str(&sections.section);
 
         // Add new patterns
         for pattern in final_new_patterns {
-            if !urules_section_content.lines().any(|l| l.trim() == pattern.trim()) && 
-               !pre_content.lines().any(|l| l.trim() == pattern.trim()) { // Double check not to add duplicates from pre_content
-                 new_gitignore_content.push_str(&pattern);
-                 new_gitignore_content.push('\n');
+            if !sections
+                .section
+                .lines()
+                .any(|l| l.trim() == pattern.trim())
+                && !sections
+                    .pre
+                    .lines()
+                    .any(|l| l.trim() == pattern.trim())
+            {
+                new_gitignore_content.push_str(&pattern);
+                new_gitignore_content.push('\n');
             }
         }
-        
+
         new_gitignore_content.push_str(GITIGNORE_FOOTER);
         new_gitignore_content.push('\n');
-        new_gitignore_content.push_str(&post_content);
+        new_gitignore_content.push_str(&sections.post);
 
         fs::write(&gitignore_path, new_gitignore_content.trim_end_matches('\n').to_string() + "\n")
             .with_context(|| format!("Failed to write updated .gitignore to {:?}", gitignore_path))?;
