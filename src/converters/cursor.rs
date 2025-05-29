@@ -1,13 +1,13 @@
 // src/converters/cursor.rs
 
 use super::RuleConverter;
-use std::fs;
-use std::path::Path;
+use crate::universal_rule::UniversalRule;
+use anyhow::{Context, Result};
 use serde::Serialize;
 use serde_yaml;
-use anyhow::{Result, Context};
-use crate::universal_rule::UniversalRule;
-use std::fmt::Debug; // Required for derive(Debug) on MdcFrontmatter
+use std::fmt::Debug;
+use std::fs;
+use std::path::Path; // Required for derive(Debug) on MdcFrontmatter
 
 /// Represents the YAML frontmatter structure for Cursor.ai's `.mdc` rule files.
 ///
@@ -65,7 +65,10 @@ fn convert_to_cursor_rule(universal_rule: &UniversalRule) -> (MdcFrontmatter, St
         }
         Some(other_type) => {
             // Log unknown types but treat them as "Manual" to avoid errors.
-            eprintln!("Warning: Unknown cursor_rule_type '{}' for rule '{}', treating as Manual.", other_type, universal_rule.name);
+            eprintln!(
+                "Warning: Unknown cursor_rule_type '{}' for rule '{}', treating as Manual.",
+                other_type, universal_rule.name
+            );
         }
     }
 
@@ -84,21 +87,27 @@ impl RuleConverter for CursorConverter {
     /// and the rule's Markdown body.
     fn generate_rules(&self, rules: &[UniversalRule], output_dir: &Path) -> Result<()> {
         let cursor_rules_dir = output_dir.join(".cursor").join("rules");
-        fs::create_dir_all(&cursor_rules_dir)
-            .with_context(|| format!("Failed to create .cursor/rules directory at {:?}", cursor_rules_dir))?;
+        fs::create_dir_all(&cursor_rules_dir).with_context(|| {
+            format!(
+                "Failed to create .cursor/rules directory at {:?}",
+                cursor_rules_dir
+            )
+        })?;
 
         for rule in rules {
             let (mdc_frontmatter, rule_content) = convert_to_cursor_rule(rule);
 
             // Serialize MdcFrontmatter to YAML, only if there are any fields to serialize.
-            let frontmatter_yaml = if mdc_frontmatter.description.is_none() &&
-                                      mdc_frontmatter.globs.is_none() &&
-                                      mdc_frontmatter.always_apply.is_none() &&
-                                      mdc_frontmatter.agent_requested.is_none() {
+            let frontmatter_yaml = if mdc_frontmatter.description.is_none()
+                && mdc_frontmatter.globs.is_none()
+                && mdc_frontmatter.always_apply.is_none()
+                && mdc_frontmatter.agent_requested.is_none()
+            {
                 String::new() // Empty string if all fields are None
             } else {
-                serde_yaml::to_string(&mdc_frontmatter)
-                    .with_context(|| format!("Failed to serialize MdcFrontmatter for rule: {}", rule.name))?
+                serde_yaml::to_string(&mdc_frontmatter).with_context(|| {
+                    format!("Failed to serialize MdcFrontmatter for rule: {}", rule.name)
+                })?
             };
 
             // Construct the final content for the .mdc file.
@@ -108,7 +117,7 @@ impl RuleConverter for CursorConverter {
             } else {
                 format!("---\n{}---\n{}", frontmatter_yaml.trim_end(), rule_content)
             };
-            
+
             let output_file_path = cursor_rules_dir.join(format!("{}.mdc", rule.name));
             fs::write(&output_file_path, mdc_content)
                 .with_context(|| format!("Failed to write .mdc file for rule: {}", rule.name))?;
@@ -118,10 +127,12 @@ impl RuleConverter for CursorConverter {
 
     /// Provides a description of where the Cursor rules are generated.
     fn get_output_description(&self, output_dir: &Path) -> String {
-        format!("Cursor rules in {:?}", output_dir.join(".cursor").join("rules"))
+        format!(
+            "Cursor rules in {:?}",
+            output_dir.join(".cursor").join("rules")
+        )
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -142,7 +153,7 @@ mod tests {
             frontmatter: UniversalRuleFrontmatter {
                 description: description.map(String::from),
                 globs: globs.map(|g| g.iter().map(|s| s.to_string()).collect()),
-                apply_globally: false, 
+                apply_globally: false,
                 cursor_rule_type: cursor_rule_type.map(String::from),
             },
             content: content.to_string(),
@@ -156,14 +167,19 @@ mod tests {
         let output_path = dir.path();
         let converter = CursorConverter;
 
-        let rules = vec![
-            create_test_universal_rule(
-                "trait_rule1", Some("Trait First rule"), Some(vec!["*.rs"]), Some("Always"), "Trait Rule 1 content"
-            ),
-        ];
+        let rules = vec![create_test_universal_rule(
+            "trait_rule1",
+            Some("Trait First rule"),
+            Some(vec!["*.rs"]),
+            Some("Always"),
+            "Trait Rule 1 content",
+        )];
 
         converter.generate_rules(&rules, output_path).unwrap();
-        let rule1_path = output_path.join(".cursor").join("rules").join("trait_rule1.mdc");
+        let rule1_path = output_path
+            .join(".cursor")
+            .join("rules")
+            .join("trait_rule1.mdc");
         assert!(rule1_path.exists(), "Cursor rule file should be created.");
         let content1 = fs::read_to_string(rule1_path).unwrap();
         assert!(content1.contains("description: Trait First rule"));
@@ -200,7 +216,10 @@ mod tests {
             "Content for agent rule",
         );
         let (frontmatter, content) = convert_to_cursor_rule(&rule);
-        assert_eq!(frontmatter.description, Some("Agent needs this".to_string()));
+        assert_eq!(
+            frontmatter.description,
+            Some("Agent needs this".to_string())
+        );
         assert_eq!(frontmatter.globs, Some(vec!["*.py".to_string()]));
         assert_eq!(frontmatter.agent_requested, Some(true));
         assert!(frontmatter.always_apply.is_none());
@@ -220,7 +239,10 @@ mod tests {
         let (frontmatter, content) = convert_to_cursor_rule(&rule);
         assert_eq!(frontmatter.description, Some("Auto attaches".to_string()));
         assert_eq!(frontmatter.globs, Some(vec!["*.ts".to_string()]));
-        assert!(frontmatter.agent_requested.is_none(), "AutoAttached should not imply agentRequested: true by default"); 
+        assert!(
+            frontmatter.agent_requested.is_none(),
+            "AutoAttached should not imply agentRequested: true by default"
+        );
         assert!(frontmatter.always_apply.is_none());
         assert_eq!(content, "Content for auto-attach rule");
     }
@@ -228,16 +250,14 @@ mod tests {
     /// Test mapping for "Manual" `cursor_rule_type` or when it's `None`.
     #[test]
     fn test_convert_to_cursor_rule_manual_or_none() {
-        let rule_manual = create_test_universal_rule(
-            "manual_rule", None, None, Some("Manual"), "Manual content"
-        );
+        let rule_manual =
+            create_test_universal_rule("manual_rule", None, None, Some("Manual"), "Manual content");
         let (fm_manual, _) = convert_to_cursor_rule(&rule_manual);
         assert!(fm_manual.always_apply.is_none());
         assert!(fm_manual.agent_requested.is_none());
 
-        let rule_none = create_test_universal_rule(
-            "none_type_rule", None, None, None, "None type content"
-        );
+        let rule_none =
+            create_test_universal_rule("none_type_rule", None, None, None, "None type content");
         let (fm_none, _) = convert_to_cursor_rule(&rule_none);
         assert!(fm_none.always_apply.is_none());
         assert!(fm_none.agent_requested.is_none());
@@ -257,10 +277,13 @@ mod tests {
         assert!(yaml.contains("globs:"));
         assert!(yaml.contains("- \"*.rs\""));
         assert!(yaml.contains("- \"*.toml\""));
-        assert!(yaml.contains("alwaysApply: true")); 
-        assert!(!yaml.contains("agentRequested:"), "agentRequested should be omitted as it's None");
+        assert!(yaml.contains("alwaysApply: true"));
+        assert!(
+            !yaml.contains("agentRequested:"),
+            "agentRequested should be omitted as it's None"
+        );
     }
-    
+
     /// Test YAML serialization when only `agent_requested` is true.
     #[test]
     fn test_mdc_frontmatter_serialization_agent_requested() {
@@ -273,7 +296,10 @@ mod tests {
         let yaml = serde_yaml::to_string(&fm).unwrap();
         assert!(yaml.contains("description: Req agent"));
         assert!(yaml.contains("agentRequested: true"));
-        assert!(!yaml.contains("alwaysApply:"), "alwaysApply should be omitted");
+        assert!(
+            !yaml.contains("alwaysApply:"),
+            "alwaysApply should be omitted"
+        );
         assert!(!yaml.contains("globs:"), "globs should be omitted");
     }
 
@@ -288,7 +314,11 @@ mod tests {
             agent_requested: None,
         };
         let yaml = serde_yaml::to_string(&fm).unwrap();
-        assert_eq!(yaml.trim(), "{}", "Serialization of all-None MdcFrontmatter should be an empty map."); 
+        assert_eq!(
+            yaml.trim(),
+            "{}",
+            "Serialization of all-None MdcFrontmatter should be an empty map."
+        );
     }
 
     /// Test the creation of `.mdc` files by `generate_rules`.
@@ -300,20 +330,36 @@ mod tests {
 
         let rules = vec![
             create_test_universal_rule(
-                "rule1", Some("First rule"), Some(vec!["*.txt"]), Some("Always"), "Rule 1 content"
+                "rule1",
+                Some("First rule"),
+                Some(vec!["*.txt"]),
+                Some("Always"),
+                "Rule 1 content",
             ),
             create_test_universal_rule(
-                "rule2", Some("Second rule"), None, Some("AgentRequested"), "Rule 2 content"
+                "rule2",
+                Some("Second rule"),
+                None,
+                Some("AgentRequested"),
+                "Rule 2 content",
             ),
-            create_test_universal_rule( // Rule with no frontmatter fields effectively
-                "rule3", None, None, None, "Rule 3 content"
+            create_test_universal_rule(
+                // Rule with no frontmatter fields effectively
+                "rule3",
+                None,
+                None,
+                None,
+                "Rule 3 content",
             ),
         ];
 
         converter.generate_rules(&rules, output_path).unwrap();
 
         let cursor_rules_dir = output_path.join(".cursor").join("rules");
-        assert!(cursor_rules_dir.exists(), "Cursor rules directory should be created.");
+        assert!(
+            cursor_rules_dir.exists(),
+            "Cursor rules directory should be created."
+        );
         assert!(cursor_rules_dir.is_dir());
 
         let rule1_path = cursor_rules_dir.join("rule1.mdc");
@@ -323,7 +369,10 @@ mod tests {
         assert!(content1.contains("globs:"));
         assert!(content1.contains("- \"*.txt\""));
         assert!(content1.contains("alwaysApply: true"));
-        assert!(content1.contains("---"), "Frontmatter separator missing for rule1");
+        assert!(
+            content1.contains("---"),
+            "Frontmatter separator missing for rule1"
+        );
         assert!(content1.ends_with("Rule 1 content"));
 
         let rule2_path = cursor_rules_dir.join("rule2.mdc");
@@ -333,12 +382,18 @@ mod tests {
         assert!(content2.contains("agentRequested: true"));
         assert!(!content2.contains("globs:"));
         assert!(content2.ends_with("Rule 2 content"));
-        
+
         let rule3_path = cursor_rules_dir.join("rule3.mdc");
         assert!(rule3_path.exists());
         let content3 = fs::read_to_string(rule3_path).unwrap();
         // Rule 3 had no frontmatter, so .mdc should only contain content
-        assert_eq!(content3, "Rule 3 content", "Rule3 content should be exactly as provided, no frontmatter block.");
-        assert!(!content3.contains("---"), "No frontmatter separator should exist for rule3"); 
+        assert_eq!(
+            content3, "Rule 3 content",
+            "Rule3 content should be exactly as provided, no frontmatter block."
+        );
+        assert!(
+            !content3.contains("---"),
+            "No frontmatter separator should exist for rule3"
+        );
     }
 }

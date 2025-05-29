@@ -23,6 +23,6 @@ pub trait RuleConverter {
     fn get_output_description(&self, output_dir: &Path) -> String;
 }
 
+pub mod claude;
 pub mod cursor;
 pub mod windsurf;
-pub mod claude;

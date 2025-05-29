@@ -33,7 +33,8 @@ rustup component add rust-src
 
 echo ""
 echo "=== Installing development dependencies ==="
-# Build in debug mode to install dev dependencies
+echo "Fetching crates..."
+cargo fetch
 echo "Building project in debug mode..."
 cargo build
 
