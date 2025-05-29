@@ -1,10 +1,10 @@
 // src/gitignore_manager.rs
 
+use anyhow::{Context, Result};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use anyhow::{Context, Result};
 
 // Assuming AgentName will be accessible from main.rs or a shared module.
 // This path will work if main.rs is part of the crate root (e.g. lib.rs then main.rs)
@@ -62,6 +62,7 @@ fn parse_gitignore_sections(gitignore_path: &Path) -> Result<GitignoreSections> 
             } else {
                 result.post.push_str(trimmed);
                 result.post.push('\n');
+                result.lines.insert(trimmed.to_string());
             }
         }
     }
@@ -88,7 +89,7 @@ pub fn update_gitignore(output_dir: &Path, agent_name: &AgentName) -> Result<()>
 
     let gitignore_path = output_dir.join(".gitignore");
     let sections = parse_gitignore_sections(&gitignore_path)?;
-    
+
     // If the header was found but the footer was missing, all remaining lines
     // are treated as part of the urules section. This is implicitly handled
     // by `parse_gitignore_sections` which collects everything after the header
@@ -105,9 +106,7 @@ pub fn update_gitignore(output_dir: &Path, agent_name: &AgentName) -> Result<()>
             format!("/{}/", trimmed_pattern),
             trimmed_pattern.to_string(),
         ];
-        let is_present = variations
-            .iter()
-            .any(|v| sections.lines.contains(v.trim()));
+        let is_present = variations.iter().any(|v| sections.lines.contains(v.trim()));
 
         if !is_present {
             final_new_patterns.push(pattern_to_check.clone());
@@ -132,14 +131,8 @@ pub fn update_gitignore(output_dir: &Path, agent_name: &AgentName) -> Result<()>
 
         // Add new patterns
         for pattern in final_new_patterns {
-            if !sections
-                .section
-                .lines()
-                .any(|l| l.trim() == pattern.trim())
-                && !sections
-                    .pre
-                    .lines()
-                    .any(|l| l.trim() == pattern.trim())
+            if !sections.section.lines().any(|l| l.trim() == pattern.trim())
+                && !sections.pre.lines().any(|l| l.trim() == pattern.trim())
             {
                 new_gitignore_content.push_str(&pattern);
                 new_gitignore_content.push('\n');
@@ -150,8 +143,11 @@ pub fn update_gitignore(output_dir: &Path, agent_name: &AgentName) -> Result<()>
         new_gitignore_content.push('\n');
         new_gitignore_content.push_str(&sections.post);
 
-        fs::write(&gitignore_path, new_gitignore_content.trim_end_matches('\n').to_string() + "\n")
-            .with_context(|| format!("Failed to write updated .gitignore to {:?}", gitignore_path))?;
+        fs::write(
+            &gitignore_path,
+            new_gitignore_content.trim_end_matches('\n').to_string() + "\n",
+        )
+        .with_context(|| format!("Failed to write updated .gitignore to {:?}", gitignore_path))?;
     }
 
     Ok(())
@@ -164,7 +160,7 @@ mod tests {
     use tempfile::tempdir;
     // Assuming AgentName is pub and accessible for tests
     // If not, tests might need to be in main.rs or AgentName moved.
-    use crate::AgentName; 
+    use crate::AgentName;
 
     fn read_gitignore_lines(gitignore_path: &Path) -> HashSet<String> {
         if !gitignore_path.exists() {
@@ -172,17 +168,20 @@ mod tests {
         }
         let file = File::open(gitignore_path).unwrap();
         let reader = BufReader::new(file);
-        reader.lines().map(|l| l.unwrap().trim().to_string()).collect()
+        reader
+            .lines()
+            .map(|l| l.unwrap().trim().to_string())
+            .collect()
     }
 
     #[test]
     fn test_add_to_empty_gitignore() -> Result<()> {
         let dir = tempdir()?;
         let output_path = dir.path();
-        
+
         update_gitignore(output_path, &AgentName::Cursor)?;
         let lines = read_gitignore_lines(&output_path.join(".gitignore"));
-        
+
         assert!(lines.contains(GITIGNORE_HEADER));
         assert!(lines.contains(".cursor/"));
         assert!(lines.contains(GITIGNORE_FOOTER));
@@ -198,7 +197,7 @@ mod tests {
 
         update_gitignore(output_path, &AgentName::Claude)?;
         let content = fs::read_to_string(&gitignore_file)?;
-        
+
         assert!(content.contains("node_modules/"));
         assert!(content.contains("target/"));
         assert!(content.contains(GITIGNORE_HEADER));
@@ -212,7 +211,10 @@ mod tests {
         let dir = tempdir()?;
         let output_path = dir.path();
         let gitignore_file = output_path.join(".gitignore");
-        let initial_content = format!("existing_pattern/\n{}\n.cursor/\n{}\nother_stuff/\n", GITIGNORE_HEADER, GITIGNORE_FOOTER);
+        let initial_content = format!(
+            "existing_pattern/\n{}\n.cursor/\n{}\nother_stuff/\n",
+            GITIGNORE_HEADER, GITIGNORE_FOOTER
+        );
         fs::write(&gitignore_file, initial_content)?;
 
         // Add Windsurf rules, which has some new patterns
@@ -222,16 +224,16 @@ mod tests {
         assert!(lines.contains("existing_pattern/"));
         assert!(lines.contains(".cursor/")); // From original section
         assert!(lines.contains("global_rules.md")); // New
-        assert!(lines.contains(".windsurf/"));      // New
+        assert!(lines.contains(".windsurf/")); // New
         assert!(lines.contains("other_stuff/"));
         assert!(lines.contains(GITIGNORE_HEADER));
         assert!(lines.contains(GITIGNORE_FOOTER));
-        
+
         let content = fs::read_to_string(&gitignore_file)?;
         let header_pos = content.find(GITIGNORE_HEADER).unwrap();
         let footer_pos = content.find(GITIGNORE_FOOTER).unwrap();
         let urules_section = &content[header_pos..footer_pos];
-        
+
         assert!(urules_section.contains(".cursor/"));
         assert!(urules_section.contains("global_rules.md"));
         assert!(urules_section.contains(".windsurf/"));
@@ -248,9 +250,12 @@ mod tests {
 
         update_gitignore(output_path, &AgentName::Cursor)?;
         let content = fs::read_to_string(&gitignore_file)?;
-        
+
         let occurrences = content.matches(".cursor/").count();
-        assert_eq!(occurrences, 1, "Pattern '.cursor/' should only appear once.");
+        assert_eq!(
+            occurrences, 1,
+            "Pattern '.cursor/' should only appear once."
+        );
         assert!(content.contains(GITIGNORE_HEADER));
         assert!(content.contains(GITIGNORE_FOOTER));
         Ok(())
@@ -262,17 +267,42 @@ mod tests {
         let output_path = dir.path();
         let gitignore_file = output_path.join(".gitignore");
         // Test with variations that should prevent adding ".cursor/"
-        fs::write(&gitignore_file, "/.cursor/\n")?; 
+        fs::write(&gitignore_file, "/.cursor/\n")?;
         update_gitignore(output_path, &AgentName::Cursor)?;
         let content_after_first_update = fs::read_to_string(&gitignore_file)?;
-        assert_eq!(content_after_first_update.matches(".cursor/").count(), 0, "'.cursor/' should not be added if '/.cursor/' exists.");
+        assert_eq!(
+            content_after_first_update.matches(".cursor/").count(),
+            0,
+            "'.cursor/' should not be added if '/.cursor/' exists."
+        );
         assert!(content_after_first_update.contains(GITIGNORE_HEADER)); // Header should be added
-        
+
         fs::write(&gitignore_file, ".cursor\n")?; // Test another variation
         update_gitignore(output_path, &AgentName::Cursor)?;
         let content_after_second_update = fs::read_to_string(&gitignore_file)?;
-        assert_eq!(content_after_second_update.matches(".cursor/").count(), 0, "'.cursor/' should not be added if '.cursor' exists.");
+        assert_eq!(
+            content_after_second_update.matches(".cursor/").count(),
+            0,
+            "'.cursor/' should not be added if '.cursor' exists."
+        );
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_existing_post_section_line_prevent_duplicate() -> Result<()> {
+        let dir = tempdir()?;
+        let output_path = dir.path();
+        let gitignore_file = output_path.join(".gitignore");
+        let initial = format!(
+            "node_modules/\n{}\n.cursor/\n{}\nCLAUDE.md\n",
+            GITIGNORE_HEADER, GITIGNORE_FOOTER
+        );
+        fs::write(&gitignore_file, initial)?;
+
+        update_gitignore(output_path, &AgentName::Claude)?;
+        let content = fs::read_to_string(&gitignore_file)?;
+        assert_eq!(content.matches("CLAUDE.md").count(), 1);
         Ok(())
     }
 }

@@ -1,11 +1,11 @@
 // src/rule_parser.rs
 
+use crate::universal_rule::{UniversalRule, UniversalRuleFrontmatter};
+use anyhow::{anyhow, Context, Result};
+use serde_yaml;
 use std::fs;
 use std::path::Path; // PathBuf is not used directly here, but often useful with Path
 use walkdir::WalkDir;
-use serde_yaml;
-use anyhow::{Context, Result, anyhow};
-use crate::universal_rule::{UniversalRule, UniversalRuleFrontmatter};
 
 /// Parses a single universal rule file from the given `file_path`.
 ///
@@ -28,25 +28,28 @@ pub fn parse_rule_file(file_path: &Path) -> Result<UniversalRule> {
 
     // Attempt to split the file content into frontmatter and main content.
     // Frontmatter is expected to be enclosed by '---' at the start and end.
-    let (frontmatter_str, content_str) =
-        if file_content.starts_with("---") {
-            let mut parts = file_content.splitn(3, "---");
-            parts.next(); // Skip the part before the first '---' (should be empty)
-            let fm_block = parts.next().unwrap_or("").trim(); // The YAML block
-            let main_content = parts.next().unwrap_or("").trim_start(); // The rest of the file
-            (fm_block, main_content)
-        } else {
-            // No frontmatter detected, treat the entire file as content.
-            ("", file_content.as_str())
-        };
+    let (frontmatter_str, content_str) = if file_content.starts_with("---") {
+        let mut parts = file_content.splitn(3, "---");
+        parts.next(); // Skip the part before the first '---' (should be empty)
+        let fm_block = parts.next().unwrap_or("").trim(); // The YAML block
+        let main_content = parts.next().unwrap_or("").trim_start(); // The rest of the file
+        (fm_block, main_content)
+    } else {
+        // No frontmatter detected, treat the entire file as content.
+        ("", file_content.as_str())
+    };
 
     // Parse the extracted frontmatter string into UniversalRuleFrontmatter.
     // If the frontmatter string is empty, use default values.
     let frontmatter: UniversalRuleFrontmatter = if frontmatter_str.is_empty() {
         UniversalRuleFrontmatter::default()
     } else {
-        serde_yaml::from_str(frontmatter_str)
-            .with_context(|| format!("Failed to parse YAML frontmatter for rule file: {:?}", file_path))?
+        serde_yaml::from_str(frontmatter_str).with_context(|| {
+            format!(
+                "Failed to parse YAML frontmatter for rule file: {:?}",
+                file_path
+            )
+        })?
     };
 
     // Derive the rule name from the file's stem (filename without extension).
@@ -80,9 +83,8 @@ pub fn parse_rule_file(file_path: &Path) -> Result<UniversalRule> {
 /// individual file parsing errors are handled internally by logging).
 pub fn discover_and_parse_rules(rules_dir: &Path) -> Result<Vec<UniversalRule>> {
     let mut rules = Vec::new();
-    for entry in WalkDir::new(rules_dir)
-        .into_iter()
-        .filter_map(|e| e.ok()) // Filter out directory reading errors, processing valid entries.
+    for entry in WalkDir::new(rules_dir).into_iter().filter_map(|e| e.ok())
+    // Filter out directory reading errors, processing valid entries.
     {
         let path = entry.path();
         // Check if the entry is a file and has a ".md" extension.
@@ -127,7 +129,10 @@ Rule content here."
 
         let rule = parse_rule_file(&file_path).unwrap();
         assert_eq!(rule.name, "test_rule");
-        assert_eq!(rule.frontmatter.description, Some("A test rule".to_string()));
+        assert_eq!(
+            rule.frontmatter.description,
+            Some("A test rule".to_string())
+        );
         assert_eq!(rule.frontmatter.globs, Some(vec!["*.rs".to_string()]));
         assert_eq!(rule.frontmatter.apply_globally, true);
         assert_eq!(rule.frontmatter.cursor_rule_type, Some("lint".to_string()));
@@ -175,7 +180,7 @@ Content after empty frontmatter."
         assert!(rule.frontmatter.cursor_rule_type.is_none());
         assert_eq!(rule.content, "Content after empty frontmatter.");
     }
-    
+
     /// Test parsing a rule file with malformed YAML in its frontmatter.
     /// Expects a parsing error.
     #[test]
@@ -196,7 +201,10 @@ Rule content here."
         .unwrap(); // Malformed YAML: globs array is not closed
 
         let result = parse_rule_file(&file_path);
-        assert!(result.is_err(), "Parsing should fail for malformed frontmatter");
+        assert!(
+            result.is_err(),
+            "Parsing should fail for malformed frontmatter"
+        );
     }
 
     /// Test discovering and parsing multiple rule files from a directory structure.
@@ -215,28 +223,40 @@ Rule content here."
         // Rule 2: Valid, no frontmatter
         let mut file2 = File::create(rules_subdir.join("rule2.md")).unwrap();
         writeln!(file2, "Content 2").unwrap();
-        
+
         // Rule 3: Invalid frontmatter (should be skipped, error printed)
         let mut file3 = File::create(rules_subdir.join("rule3.md")).unwrap();
-        writeln!(file3, "---\ndescription: Rule 3\nglobs: [\"*.txt\"\n---\nContent 3").unwrap();
+        writeln!(
+            file3,
+            "---\ndescription: Rule 3\nglobs: [\"*.txt\"\n---\nContent 3"
+        )
+        .unwrap();
 
         // File 4: Not a Markdown file (should be ignored)
         let mut file4 = File::create(rules_subdir.join("notes.txt")).unwrap();
         writeln!(file4, "Some notes, not a rule.").unwrap();
-        
+
         // Rule 5: Valid rule in a nested directory
         let sub_subdir = rules_subdir.join("nested");
         fs::create_dir(&sub_subdir).unwrap();
         let mut file5 = File::create(sub_subdir.join("rule5.md")).unwrap();
-        writeln!(file5, "---\ndescription: Rule 5 in nested dir\n---\nContent 5").unwrap();
-
+        writeln!(
+            file5,
+            "---\ndescription: Rule 5 in nested dir\n---\nContent 5"
+        )
+        .unwrap();
 
         let rules = discover_and_parse_rules(&rules_subdir).unwrap();
         // Expect rule1, rule2, and rule5 to be parsed. rule3 has malformed YAML.
         assert_eq!(rules.len(), 3, "Expected 3 valid rules to be parsed.");
 
-        assert!(rules.iter().any(|r| r.name == "rule1" && r.frontmatter.description == Some("Rule 1".to_string())));
-        assert!(rules.iter().any(|r| r.name == "rule2" && r.content == "Content 2" && r.frontmatter.description.is_none()));
-        assert!(rules.iter().any(|r| r.name == "rule5" && r.frontmatter.description == Some("Rule 5 in nested dir".to_string())));
+        assert!(rules
+            .iter()
+            .any(|r| r.name == "rule1" && r.frontmatter.description == Some("Rule 1".to_string())));
+        assert!(rules.iter().any(|r| r.name == "rule2"
+            && r.content == "Content 2"
+            && r.frontmatter.description.is_none()));
+        assert!(rules.iter().any(|r| r.name == "rule5"
+            && r.frontmatter.description == Some("Rule 5 in nested dir".to_string())));
     }
 }

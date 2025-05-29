@@ -12,8 +12,12 @@ fn get_binary_path() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.push("target");
     // Adjust for debug or release builds if necessary, assuming debug for tests
-    path.push(if cfg!(debug_assertions) { "debug" } else { "release" });
-    path.push("rule_unifier_cli"); // The binary name from Cargo.toml
+    path.push(if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    });
+    path.push("urules"); // The binary name from Cargo.toml
     path
 }
 
@@ -57,14 +61,13 @@ globs: [\"*.rs\"]
 For Rust files in Windsurf.";
     let mut windsurf_file = File::create(rules_dir.join("windsurf_specific.md")).unwrap();
     writeln!(windsurf_file, "{}", windsurf_specific_content).unwrap();
-    
+
     let simple_claude_content = "---
 description: A simple rule for Claude.
 ---
 This is a simple rule.";
     let mut claude_file = File::create(rules_dir.join("claude_simple.md")).unwrap();
     writeln!(claude_file, "{}", simple_claude_content).unwrap();
-
 
     TestSetup {
         _temp_dir: temp_dir,
@@ -144,7 +147,9 @@ fn test_cursor_generation_and_gitignore() {
     let cursor_output_rules_dir = setup.output_dir.join(".cursor").join("rules");
     assert!(cursor_output_rules_dir.join("common.mdc").exists());
     assert!(cursor_output_rules_dir.join("cursor_specific.mdc").exists());
-    assert!(!cursor_output_rules_dir.join("windsurf_specific.mdc").exists()); // Ensure only relevant rules
+    assert!(!cursor_output_rules_dir
+        .join("windsurf_specific.mdc")
+        .exists()); // Ensure only relevant rules
 
     // Verify content of a key file
     let common_content = fs::read_to_string(cursor_output_rules_dir.join("common.mdc")).unwrap();
@@ -153,10 +158,10 @@ fn test_cursor_generation_and_gitignore() {
     // If cursor_rule_type is not "Always", apply_globally does not set alwaysApply:true for cursor.
     assert!(!common_content.contains("alwaysApply: true")); // Because cursor_rule_type wasn't "Always"
     assert!(common_content.contains("This is a common rule for all agents."));
-    
-    let cursor_specific_content_check = fs::read_to_string(cursor_output_rules_dir.join("cursor_specific.mdc")).unwrap();
-    assert!(cursor_specific_content_check.contains("alwaysApply: true"));
 
+    let cursor_specific_content_check =
+        fs::read_to_string(cursor_output_rules_dir.join("cursor_specific.mdc")).unwrap();
+    assert!(cursor_specific_content_check.contains("alwaysApply: true"));
 
     // Verify .gitignore
     let gitignore_path = setup.output_dir.join(".gitignore");
@@ -177,9 +182,9 @@ fn test_windsurf_generation_and_gitignore() {
         .arg("--output-dir")
         .arg(&setup.output_dir);
 
-    cmd.assert().success().stdout(
-        predicate::str::contains("Rules generated successfully for Windsurf"),
-    );
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Rules generated successfully for Windsurf",
+    ));
 
     // Verify file creation
     assert!(setup.output_dir.join("global_rules.md").exists());
@@ -196,8 +201,8 @@ fn test_windsurf_generation_and_gitignore() {
     // So it should NOT be in global_rules.md for windsurf.
     assert!(!global_content.contains("Apply this always for Cursor."));
 
-
-    let ws_specific_content = fs::read_to_string(windsurf_workspace_dir.join("windsurf_specific.md")).unwrap();
+    let ws_specific_content =
+        fs::read_to_string(windsurf_workspace_dir.join("windsurf_specific.md")).unwrap();
     assert!(ws_specific_content.contains("# Description: Windsurf workspace rule."));
     assert!(ws_specific_content.contains("# Globs: [\"*.rs\"]"));
     assert!(ws_specific_content.contains("For Rust files in Windsurf."));
@@ -243,7 +248,6 @@ fn test_claude_generation_and_gitignore() {
     assert!(claude_content.contains("## Rule: claude_simple"));
     assert!(claude_content.contains("A simple rule for Claude."));
     assert!(claude_content.contains("This is a simple rule."));
-
 
     // Verify .gitignore
     let gitignore_path = setup.output_dir.join(".gitignore");
